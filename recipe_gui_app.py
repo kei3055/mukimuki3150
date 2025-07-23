@@ -1,5 +1,4 @@
-import tkinter as tk
-from tkinter import ttk, scrolledtext
+import streamlit as st
 import requests
 
 # --- APIキーを設定 ---
@@ -58,75 +57,57 @@ def calc_score(nutrition, target):
     except:
         return float("inf")
 
-# --- レシピ提案 ---
-def suggest_recipes():
-    ingredients_ja = ingredients_entry.get("1.0", tk.END).strip().split(",")
-    ingredients_en = [translate_ja_to_en(i.strip()) for i in ingredients_ja]
+# --- Streamlit UI ---
+st.set_page_config(page_title="レシピ提案アプリ", layout="wide")
+st.title("🍳 材料と栄養バランスからレシピを提案します")
 
-    target = {
-        "calories": float(entry_cal.get()),
-        "protein": float(entry_protein.get()),
-        "fat": float(entry_fat.get()),
-        "carbs": float(entry_carbs.get())
-    }
+st.markdown("### 🛒 材料（日本語・カンマ区切り）")
+ingredients_input = st.text_area("例: 卵, トマト, チーズ", height=100)
 
-    results = search_recipes(ingredients_en)
-    suggestions = []
+st.markdown("### 📊 栄養の目安（1食分）")
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    cal = st.number_input("エネルギー (kcal)", min_value=0.0)
+with col2:
+    protein = st.number_input("タンパク質 (g)", min_value=0.0)
+with col3:
+    fat = st.number_input("脂質 (g)", min_value=0.0)
+with col4:
+    carbs = st.number_input("炭水化物 (g)", min_value=0.0)
 
-    for recipe in results:
-        nutrition = get_nutrition(recipe["id"])
-        if not nutrition:
-            continue
+if st.button("🔍 レシピ検索"):
+    if not ingredients_input.strip():
+        st.warning("材料を入力してください。")
+    else:
+        ingredients_ja = [i.strip() for i in ingredients_input.split(",")]
+        with st.spinner("翻訳中..."):
+            ingredients_en = [translate_ja_to_en(i) for i in ingredients_ja]
 
-        score = calc_score(nutrition, target)
-        title_ja = translate_en_to_ja(recipe["title"])
-        missed_ja = [translate_en_to_ja(i['name']) for i in recipe.get("missedIngredients", [])]
+        target = {
+            "calories": cal,
+            "protein": protein,
+            "fat": fat,
+            "carbs": carbs
+        }
 
-        if not missed_ja:
-            suggestions.append((score, f"✅ {title_ja}（材料すべて揃っています）"))
-        else:
-            suggestions.append((score, f"🟡 {title_ja}（あと {', '.join(missed_ja)} があれば作成可能）"))
+        with st.spinner("レシピを検索中..."):
+            results = search_recipes(ingredients_en)
 
-    suggestions.sort(key=lambda x: x[0])
-    result_box.delete("1.0", tk.END)
-    result_box.insert(tk.END, "📋 提案レシピ一覧:\n\n")
-    for _, line in suggestions:
-        result_box.insert(tk.END, line + "\n")
+        suggestions = []
+        for recipe in results:
+            nutrition = get_nutrition(recipe["id"])
+            if not nutrition:
+                continue
+            score = calc_score(nutrition, target)
+            title_ja = translate_en_to_ja(recipe["title"])
+            missed_ja = [translate_en_to_ja(i['name']) for i in recipe.get("missedIngredients", [])]
+            if not missed_ja:
+                suggestions.append((score, f"✅ {title_ja}（材料すべて揃っています）"))
+            else:
+                suggestions.append((score, f"🟡 {title_ja}（あと {', '.join(missed_ja)} があれば作成可能）"))
 
-# --- GUIセットアップ ---
-root = tk.Tk()
-root.title("レシピ提案アプリ")
-root.state("zoomed")  # 画面いっぱいに表示
+        suggestions.sort(key=lambda x: x[0])
 
-# --- フレームとラベル ---
-frame = ttk.Frame(root, padding=20)
-frame.pack(fill=tk.BOTH, expand=True)
-
-ttk.Label(frame, text="🛒 材料（日本語・カンマ区切り）:").grid(column=0, row=0, sticky=tk.W)
-ingredients_entry = scrolledtext.ScrolledText(frame, width=80, height=3)
-ingredients_entry.grid(column=0, row=1, columnspan=4, pady=5)
-
-ttk.Label(frame, text="📊 栄養の目安（1食分）").grid(column=0, row=2, sticky=tk.W, pady=(10, 2))
-ttk.Label(frame, text="エネルギー(kcal):").grid(column=0, row=3, sticky=tk.E)
-entry_cal = ttk.Entry(frame, width=10)
-entry_cal.grid(column=1, row=3)
-
-ttk.Label(frame, text="タンパク質(g):").grid(column=2, row=3, sticky=tk.E)
-entry_protein = ttk.Entry(frame, width=10)
-entry_protein.grid(column=3, row=3)
-
-ttk.Label(frame, text="脂質(g):").grid(column=0, row=4, sticky=tk.E)
-entry_fat = ttk.Entry(frame, width=10)
-entry_fat.grid(column=1, row=4)
-
-ttk.Label(frame, text="炭水化物(g):").grid(column=2, row=4, sticky=tk.E)
-entry_carbs = ttk.Entry(frame, width=10)
-entry_carbs.grid(column=3, row=4)
-
-search_button = ttk.Button(frame, text="🔍 レシピ検索", command=suggest_recipes)
-search_button.grid(column=0, row=5, columnspan=4, pady=10)
-
-result_box = scrolledtext.ScrolledText(frame, width=100, height=20)
-result_box.grid(column=0, row=6, columnspan=4, pady=10)
-
-root.mainloop()
+        st.markdown("### 📋 提案レシピ一覧")
+        for _, line in suggestions:
+            st.write(line)
